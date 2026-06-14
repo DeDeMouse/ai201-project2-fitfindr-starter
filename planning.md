@@ -108,8 +108,7 @@ For each tool, describe the specific failure mode you're handling and what the a
 | Tool | Failure mode | Agent response |
 |------|-------------|----------------|
 | search_listings | No results match the query | The loop sets `session["error"]` to a helpful "no matches" message and returns early. `suggest_outfit` and `create_fit_card` never run, `outfit_suggestion` and `fit_card` stay `None`. The UI shows the error message. |
-| suggest_outfit | Wardrobe is empty | Not treated as an error. It calls the LLM for general styling advice for the item instead of specific wardrobe combos, and returns that non-empty string.
- |
+| suggest_outfit | Wardrobe is empty | Not treated as an error. It calls the LLM for general styling advice for the item instead of specific wardrobe combos, and returns that non-empty string. |
 | create_fit_card | Outfit input is missing or incomplete | Guards against the empty/whitespace outfit and returns a descriptive error-message string (no exception raised). |
 
 ---
