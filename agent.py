@@ -18,6 +18,8 @@ Usage (once implemented):
     print(result["error"])   # None on success
 """
 
+import re
+
 from tools import search_listings, suggest_outfit, create_fit_card
 
 
@@ -92,9 +94,61 @@ def run_agent(query: str, wardrobe: dict) -> dict:
     Before writing code, complete the Planning Loop and State Management sections
     of planning.md — your implementation should match what you described there.
     """
-    # TODO: implement the planning loop
+    # Step 1: fresh session — single source of truth for this interaction.
     session = _new_session(query, wardrobe)
-    session["error"] = "Planning loop not yet implemented."
+
+    # Step 2: parse the query into description / size / max_price (regex).
+    # The size/price phrases are stripped from the description so they don't
+    # pollute the keyword scoring in search_listings().
+    description = query
+    size = None
+    max_price = None
+
+    # max_price: prefer an explicit "under/below/... <n>" phrase, else "$n".
+    price_match = re.search(
+        r"(?:under|below|less than|no more than|max(?:imum)?|up to|cheaper than)\s*"
+        r"\$?\s*(\d+(?:\.\d+)?)",
+        query,
+        re.IGNORECASE,
+    ) or re.search(r"\$\s*(\d+(?:\.\d+)?)", query)
+    if price_match:
+        max_price = float(price_match.group(1))
+        description = description.replace(price_match.group(0), " ")
+
+    # size: the word "size" followed by a token (e.g. "size M", "size 8").
+    size_match = re.search(r"\bsize\s+([A-Za-z0-9.]+)", query, re.IGNORECASE)
+    if size_match:
+        size = size_match.group(1).upper()
+        description = description.replace(size_match.group(0), " ")
+
+    # Clean up leftover filler so only descriptive keywords remain.
+    description = re.sub(r"\b(?:under|below|in|for|with)\b", " ", description, flags=re.IGNORECASE)
+    description = re.sub(r"[,\$]", " ", description)
+    description = re.sub(r"\s+", " ", description).strip()
+
+    session["parsed"] = {"description": description, "size": size, "max_price": max_price}
+
+    # Step 3: search the listings with the parsed parameters.
+    session["search_results"] = search_listings(description, size=size, max_price=max_price)
+
+    # No matches → set a helpful error and stop before the LLM tools.
+    if not session["search_results"]:
+        session["error"] = (
+            f"No secondhand listings matched “{query}”. "
+            "Try different keywords, a higher budget, or a different size."
+        )
+        return session
+
+    # Step 4: select the top-ranked result.
+    session["selected_item"] = session["search_results"][0]
+
+    # Step 5: suggest an outfit using the selected item and the wardrobe.
+    session["outfit_suggestion"] = suggest_outfit(session["selected_item"], wardrobe)
+
+    # Step 6: turn the outfit into a shareable fit card.
+    session["fit_card"] = create_fit_card(session["outfit_suggestion"], session["selected_item"])
+
+    # Step 7: return the completed session (error stays None).
     return session
 
 
